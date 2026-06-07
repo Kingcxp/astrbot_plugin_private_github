@@ -72,7 +72,7 @@ class GitHubPrivateListenPlugin(Star):
         self.poll_interval: int = max(config.get("poll_interval", 1800), 60)
         self.max_entries: int = max(config.get("max_entries", 5), 0)
         self.cfg_timezone: str = config.get("timezone", "Asia/Shanghai")
-        self.at_enabled: bool = config.get("at_enabled", False)
+        self.at_enable: bool = config.get("at_enable", False)
         self.whitelist: List[str] = config.get("whitelist", [])
 
         # 用户名 -> QQ 映射（管理员在配置中设置 username_qq）
@@ -234,6 +234,12 @@ class GitHubPrivateListenPlugin(Star):
         raw = []
         try:
             raw = self.config.get("username_qq", []) or []
+            if isinstance(raw, str):
+                import json
+                try:
+                    raw = json.loads(raw)
+                except Exception:
+                    pass
         except Exception:
             raw = []
 
@@ -285,8 +291,9 @@ class GitHubPrivateListenPlugin(Star):
     def _resolve_qq_for_username(self, username: str) -> Optional[str]:
         if not username:
             return None
+        mapping = self._load_username_qq_map()
         key = str(username).strip().lstrip("@").lower()
-        return self.username_qq_map.get(key)
+        return mapping.get(key)
 
     def _normalize_user_display(self, user_obj: Dict[str, Any]) -> str:
         """优先返回用户的 name（非空且不为字符串 'None'），否则回退到 login。"""
@@ -776,11 +783,16 @@ class GitHubPrivateListenPlugin(Star):
 
         for session, msg_list in messages_by_session.items():
             full_msg = "\n\n".join([m[0] for m in msg_list])
-            chain = MessageChain().message(full_msg)
             
-            if self.at_enabled:
+            raw_at_enable = self.config.get("at_enable", False)
+            if isinstance(raw_at_enable, str):
+                is_at_enable = raw_at_enable.lower() == "true"
+            else:
+                is_at_enable = bool(raw_at_enable)
+
+            ats = []
+            if is_at_enable:
                 seen = set()
-                ats = []
                 for _, ass in msg_list:
                     for a in ass or []:
                         if not a or a in seen:
@@ -789,16 +801,19 @@ class GitHubPrivateListenPlugin(Star):
                         qq = self._resolve_qq_for_username(a)
                         if qq:
                             ats.append((a, qq))
-                
-                # 如果存在符合条件的被指派者（且不是动作触发人），在末尾统一追加 at 提醒
-                if ats:
-                    chain.message("\n\n🔔 提醒相关人员: ")
-                    for name, qq in ats:
-                        try:
-                            chain.at(name, str(qq))
-                            chain.message(" ")
-                        except Exception as e:
-                            logger.error(f"[Private GitHub] 拼接 at 元素失败: {e}")
+            
+            if ats:
+                full_msg += "\n\n🔔 提醒相关人员: "
+
+            chain = MessageChain().message(full_msg)
+            
+            if ats:
+                for name, qq in ats:
+                    try:
+                        chain.at(name, str(qq))
+                        chain.message(" ")
+                    except Exception as e:
+                        logger.error(f"[Private GitHub] 拼接 at 元素失败: {e}")
 
             try:
                 await self.context.send_message(session, chain)

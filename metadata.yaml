@@ -1,7 +1,7 @@
 name: astrbot_plugin_private_github
 display_name: GitHub 私有仓库动态推送
 desc: 通过 GitHub API 定时获取私有仓库动态（Issues/Commits/Releases/Projects）并推送到聊天会话，支持每个会话独立订阅
-version: v2.0.0
+version: v2.1.1
 author: CecilyGao
 repo: https://github.com/CecilyGao/astrbot_plugin_private_github
 astrbot_version: ">=4.9.2"
